@@ -116,3 +116,29 @@ void uart0Send(char *buffer, uint32_t length)
     length--;
   }
 }
+
+void uart1Send(char *buffer, uint32_t length)
+{
+	int first = 1;
+
+	/* Enable transmitter */
+	LPC_GPIO_PORT->SET0 = 1 << TXEN_IO;
+
+	/* Send buffer */
+
+	while (length != 0)
+	{
+		uart1SendChar(*buffer, first);
+		first = 0;
+		buffer++;
+		length--;
+	}
+
+	/* Wait until transmitter becomes idle */
+	while (!(LPC_USART1->STAT & UART_STATUS_TXIDLE));
+
+	/* Disable transmitter */
+	LPC_GPIO_PORT->CLR0 = 1 << TXEN_IO;
+
+}
+

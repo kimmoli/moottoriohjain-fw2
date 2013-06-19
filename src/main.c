@@ -44,8 +44,6 @@
   __CRP const unsigned int CRP_WORD = CRP_NO_CRP ;
 #endif
 
-#define LED_LOCATION    (2)
-
 /* This define should be enabled if you want to      */
 /* maintain an SWD/debug connection to the LPC810,   */
 /* but it will prevent you from having access to the */
@@ -64,17 +62,19 @@ void configurePins()
   LPC_SWM->PINASSIGN0 = 0xffff0004UL;
   /* U1_TXD */
   /* U1_RXD */
-  /* U1_RTS */
-  LPC_SWM->PINASSIGN1 = 0x020103ffUL;
+  LPC_SWM->PINASSIGN1 = 0xff0103ffUL;
 
   /* Pin Assign 1 bit Configuration */
   /* RESET */
   LPC_SWM->PINENABLE0 = 0xffffffbfUL;
-
 }
+
 
 int main(void)
 {
+
+  char iobusbuf[64] = "\0kimmo was here!" ;
+
   /* Configure the core clock/PLL via CMSIS */
   SystemCoreClockUpdate();
 
@@ -83,6 +83,8 @@ int main(void)
 
   /* Initialise the UART0 block for printf output */
   uart0Init(115200);
+
+  /* Initialise UART1 for IOBUS */
   uart1Init(200000);
 
   /* Configure the multi-rate timer for 1ms ticks */
@@ -91,10 +93,8 @@ int main(void)
   /* Configure the switch matrix (setup pins for UART0 and GPIO) */
   configurePins();
 
-  /* Set the LED pin to output (1 = output, 0 = input) */
-  #if !defined(USE_SWD)
-    LPC_GPIO_PORT->DIR0 |= (1 << LED_LOCATION);
-  #endif
+  /* Set the TXEN pin to output (1 = output, 0 = input) */
+  LPC_GPIO_PORT->DIR0 |= (1 << TXEN_IO);
 
   printf("SystemCoreClock %d\r\n", SystemCoreClock );
   printf("MainClock %d\r\n", MainClock );
@@ -105,25 +105,16 @@ int main(void)
   printf("LPC_SYSCON->SYSPLLCTRL %x\r\n", LPC_SYSCON->SYSPLLCTRL);
   while(1)
   {
-    #if 0//!defined(USE_SWD)
-      /* Turn LED Off by setting the GPIO pin high */
-      LPC_GPIO_PORT->SET0 = 1 << LED_LOCATION;
-      mrtDelay(200);
 
-      /* Turn LED On by setting the GPIO pin low */
-      LPC_GPIO_PORT->CLR0 = 1 << LED_LOCATION;
-      mrtDelay(10);
-    #else
-      /* Just insert a 1 second delay */
-      mrtDelay(1000);
-    #endif
+    /* Just insert a 1 second delay */
+    mrtDelay(1000);
 
     /* Send some text (printf is redirected to UART0) */
-    printf("Up in the ass of Timo...\r\n");
+    printf(".");
 
-    uart1SendChar(0x55, 1);
-    uart1SendChar(0x00, 0);
-    uart1SendChar(0xaa, 0);
+    /* Send something over RS-485 */
+    uart1Send( iobusbuf, 16);
+    uart0Send( iobusbuf, 16);
 
   }
 }

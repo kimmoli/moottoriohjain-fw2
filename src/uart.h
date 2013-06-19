@@ -42,6 +42,8 @@ extern "C" {
 
 #include "LPC8xx.h"
 
+#define TXEN_IO    (2)
+
 #define UART_ENABLE          (1 << 0)
 #define UART_DATA_LENGTH_8   (1 << 2)
 #define UART_DATA_LENGTH_9   (2 << 2)
@@ -64,6 +66,7 @@ void uart1Init     (uint32_t baudRate);
 void uart0SendChar (char buffer);
 void uart1SendChar(char buffer, int addrbit);
 void uart0Send     (char *buffer, uint32_t length);
+void uart1Send(char *buffer, uint32_t length);
 
 #ifdef __cplusplus
 }
