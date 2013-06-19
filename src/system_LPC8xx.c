@@ -101,12 +101,12 @@
 // </e>
 */
 #define CLOCK_SETUP           1
-#define SYSOSCCTRL_Val        0x00000000              // Reset: 0x000
-#define WDTOSCCTRL_Val        0x00000000              // Reset: 0x000
-#define SYSPLLCTRL_Val        0x00000041              // Reset: 0x000
-#define SYSPLLCLKSEL_Val      0x00000001              // Reset: 0x000
-#define MAINCLKSEL_Val        0x00000003              // Reset: 0x000
-#define SYSAHBCLKDIV_Val      0x00000001              // Reset: 0x001
+#define SYSOSCCTRL_Val        0x1              // Reset: 0x000
+#define WDTOSCCTRL_Val        0x0              // Reset: 0x000
+#define SYSPLLCTRL_Val        0x23              // Reset: 0x000
+#define SYSPLLCLKSEL_Val      0x0              // Reset: 0x000
+#define MAINCLKSEL_Val        0x3              // Reset: 0x000
+#define SYSAHBCLKDIV_Val      0x2              // Reset: 0x001
 
 /*
 //-------- <<< end of configuration section >>> ------------------------------
@@ -119,11 +119,11 @@
 #define CHECK_RSVD(val, mask)                     (val & mask)
 
 /* Clock Configuration -------------------------------------------------------*/
-#if (CHECK_RSVD((SYSOSCCTRL_Val),  ~0x00000003))
+#if (CHECK_RSVD((SYSOSCCTRL_Val),  ~0x3))
    #error "SYSOSCCTRL: Invalid values of reserved bits!"
 #endif
 
-#if (CHECK_RSVD((WDTOSCCTRL_Val),  ~0x000001FF))
+#if (CHECK_RSVD((WDTOSCCTRL_Val),  ~0x1FF))
    #error "WDTOSCCTRL: Invalid values of reserved bits!"
 #endif
 
@@ -131,11 +131,11 @@
    #error "SYSPLLCLKSEL: Value out of range!"
 #endif
 
-#if (CHECK_RSVD((SYSPLLCTRL_Val),  ~0x000001FF))
+#if (CHECK_RSVD((SYSPLLCTRL_Val),  ~0x1FF))
    #error "SYSPLLCTRL: Invalid values of reserved bits!"
 #endif
 
-#if (CHECK_RSVD((MAINCLKSEL_Val),  ~0x00000003))
+#if (CHECK_RSVD((MAINCLKSEL_Val),  ~0x3))
    #error "MAINCLKSEL: Invalid values of reserved bits!"
 #endif
 
@@ -157,7 +157,7 @@
 #define __CLKIN_CLK       (12000000UL)    /* CLKIN pin frequency              */
 
 
-#define __FREQSEL   ((WDTOSCCTRL_Val >> 5) & 0x0F)
+#define __FREQSEL   ((WDTOSCCTRL_Val >> 5) & 0xF)
 #define __DIVSEL   (((WDTOSCCTRL_Val & 0x1F) << 1) + 2)
 
 #if (CLOCK_SETUP)                         /* Clock Setup              */
@@ -196,30 +196,30 @@
   #endif
 
   /* sys_pllclkin calculation */
-  #if   ((SYSPLLCLKSEL_Val & 0x03) == 0)
+  #if   ((SYSPLLCLKSEL_Val & 0x3) == 0)
     #define __SYS_PLLCLKIN           (__IRC_OSC_CLK)
-  #elif ((SYSPLLCLKSEL_Val & 0x03) == 1)
+  #elif ((SYSPLLCLKSEL_Val & 0x3) == 1)
     #define __SYS_PLLCLKIN           (__SYS_OSC_CLK)
-  #elif ((SYSPLLCLKSEL_Val & 0x03) == 3)
+  #elif ((SYSPLLCLKSEL_Val & 0x3) == 3)
     #define __SYS_PLLCLKIN           (__CLKIN_CLK)
   #else
     #define __SYS_PLLCLKIN           (0)
   #endif
 
-  #define  __SYS_PLLCLKOUT         (__SYS_PLLCLKIN * ((SYSPLLCTRL_Val & 0x01F) + 1))
+  #define  __SYS_PLLCLKOUT         (__SYS_PLLCLKIN * ((SYSPLLCTRL_Val & 0x1F) + 1))
 
   /* main clock calculation */
-  #if   ((MAINCLKSEL_Val & 0x03) == 0)
+  #if   ((MAINCLKSEL_Val & 0x3) == 0)
     #define __MAIN_CLOCK             (__IRC_OSC_CLK)
-  #elif ((MAINCLKSEL_Val & 0x03) == 1)
+  #elif ((MAINCLKSEL_Val & 0x3) == 1)
     #define __MAIN_CLOCK             (__SYS_PLLCLKIN)
-  #elif ((MAINCLKSEL_Val & 0x03) == 2)
+  #elif ((MAINCLKSEL_Val & 0x3) == 2)
     #if (__FREQSEL ==  0)
       #error "MAINCLKSEL: WDT Oscillator selected but FREQSEL is undefined!"
     #else
       #define __MAIN_CLOCK           (__WDT_OSC_CLK)
     #endif
-  #elif ((MAINCLKSEL_Val & 0x03) == 3)
+  #elif ((MAINCLKSEL_Val & 0x3) == 3)
     #define __MAIN_CLOCK             (__SYS_PLLCLKOUT)
   #else
     #define __MAIN_CLOCK             (0)
@@ -236,6 +236,7 @@
   Clock Variable definitions
  *----------------------------------------------------------------------------*/
 uint32_t SystemCoreClock = __SYSTEM_CLOCK;/*!< System Clock Frequency (Core Clock)*/
+uint32_t MainClock = __MAIN_CLOCK;
 
 
 /*----------------------------------------------------------------------------
@@ -246,7 +247,7 @@ void SystemCoreClockUpdate (void)            /* Get Core Clock Frequency      */
   uint32_t wdt_osc = 0;
 
   /* Determine clock frequency according to clock register values             */
-  switch ((LPC_SYSCON->WDTOSCCTRL >> 5) & 0x0F) {
+  switch ((LPC_SYSCON->WDTOSCCTRL >> 5) & 0xF) {
     case 0:  wdt_osc =       0; break;
     case 1:  wdt_osc =  500000; break;
     case 2:  wdt_osc =  800000; break;
@@ -266,12 +267,12 @@ void SystemCoreClockUpdate (void)            /* Get Core Clock Frequency      */
   }
   wdt_osc /= ((LPC_SYSCON->WDTOSCCTRL & 0x1F) << 1) + 2;
  
-  switch (LPC_SYSCON->MAINCLKSEL & 0x03) {
+  switch (LPC_SYSCON->MAINCLKSEL & 0x3) {
     case 0:                             /* Internal RC oscillator             */
       SystemCoreClock = __IRC_OSC_CLK;
       break;
     case 1:                             /* Input Clock to System PLL          */
-      switch (LPC_SYSCON->SYSPLLCLKSEL & 0x03) {
+      switch (LPC_SYSCON->SYSPLLCLKSEL & 0x3) {
           case 0:                       /* Internal RC oscillator             */
             SystemCoreClock = __IRC_OSC_CLK;
             break;
@@ -290,22 +291,24 @@ void SystemCoreClockUpdate (void)            /* Get Core Clock Frequency      */
       SystemCoreClock = wdt_osc;
       break;
     case 3:                             /* System PLL Clock Out               */
-      switch (LPC_SYSCON->SYSPLLCLKSEL & 0x03) {
+      switch (LPC_SYSCON->SYSPLLCLKSEL & 0x3) {
           case 0:                       /* Internal RC oscillator             */
-            SystemCoreClock = __IRC_OSC_CLK * ((LPC_SYSCON->SYSPLLCTRL & 0x01F) + 1);
+            SystemCoreClock = __IRC_OSC_CLK * ((LPC_SYSCON->SYSPLLCTRL & 0x1F) + 1);
             break;
           case 1:                       /* System oscillator                  */
-            SystemCoreClock = __SYS_OSC_CLK * ((LPC_SYSCON->SYSPLLCTRL & 0x01F) + 1);
+            SystemCoreClock = __SYS_OSC_CLK * ((LPC_SYSCON->SYSPLLCTRL & 0x1F) + 1);
             break;
           case 2:                       /* Reserved                           */
             SystemCoreClock = 0;
             break;
           case 3:                       /* CLKIN pin                          */
-            SystemCoreClock = __CLKIN_CLK * ((LPC_SYSCON->SYSPLLCTRL & 0x01F) + 1);
+            SystemCoreClock = __CLKIN_CLK * ((LPC_SYSCON->SYSPLLCTRL & 0x1F) + 1);
             break;
       }
       break;
   }
+
+  MainClock = SystemCoreClock;
 
   SystemCoreClock /= LPC_SYSCON->SYSAHBCLKDIV;  
 
@@ -329,7 +332,7 @@ void SystemInit (void) {
 	
 #if (CLOCK_SETUP)                                 /* Clock Setup              */
 
-#if ((SYSPLLCLKSEL_Val & 0x03) == 1)
+#if ((SYSPLLCLKSEL_Val & 0x3) == 1)
   LPC_IOCON->PIO0_8 &= ~(0x3 << 3);
   LPC_IOCON->PIO0_9 &= ~(0x3 << 3);
   LPC_SWM->PINENABLE0 &= ~(0x3 << 4);
@@ -337,30 +340,30 @@ void SystemInit (void) {
   LPC_SYSCON->SYSOSCCTRL    = SYSOSCCTRL_Val;
   for (i = 0; i < 200; i++) __NOP();
 #endif
-#if ((SYSPLLCLKSEL_Val & 0x03) == 3)
+#if ((SYSPLLCLKSEL_Val & 0x3) == 3)
   LPC_IOCON->PIO0_1 &= ~(0x3 << 3);
   LPC_SWM->PINENABLE0 &= ~(0x1 << 7);
   for (i = 0; i < 200; i++) __NOP();
 #endif
 
   LPC_SYSCON->SYSPLLCLKSEL  = SYSPLLCLKSEL_Val;   /* Select PLL Input         */
-  LPC_SYSCON->SYSPLLCLKUEN  = 0x01;								/* Update Clock Source      */
-  while (!(LPC_SYSCON->SYSPLLCLKUEN & 0x01));     /* Wait Until Updated       */
-#if ((MAINCLKSEL_Val & 0x03) == 3)                /* Main Clock is PLL Out    */
+  LPC_SYSCON->SYSPLLCLKUEN  = 0x1;								/* Update Clock Source      */
+  while (!(LPC_SYSCON->SYSPLLCLKUEN & 0x1));     /* Wait Until Updated       */
+#if ((MAINCLKSEL_Val & 0x3) == 3)                /* Main Clock is PLL Out    */
   LPC_SYSCON->SYSPLLCTRL    = SYSPLLCTRL_Val;
   LPC_SYSCON->PDRUNCFG     &= ~(0x1 << 7);        /* Power-up SYSPLL          */
-  while (!(LPC_SYSCON->SYSPLLSTAT & 0x01));	      /* Wait Until PLL Locked    */
+  while (!(LPC_SYSCON->SYSPLLSTAT & 0x1));	      /* Wait Until PLL Locked    */
 #endif
 
-#if (((MAINCLKSEL_Val & 0x03) == 2) )
+#if (((MAINCLKSEL_Val & 0x3) == 2) )
   LPC_SYSCON->WDTOSCCTRL    = WDTOSCCTRL_Val;
   LPC_SYSCON->PDRUNCFG     &= ~(0x1 << 6);        /* Power-up WDT Clock       */
   for (i = 0; i < 200; i++) __NOP();
 #endif
 
   LPC_SYSCON->MAINCLKSEL    = MAINCLKSEL_Val;     /* Select PLL Clock Output  */
-  LPC_SYSCON->MAINCLKUEN    = 0x01;								/* Update MCLK Clock Source */
-  while (!(LPC_SYSCON->MAINCLKUEN & 0x01));       /* Wait Until Updated       */
+  LPC_SYSCON->MAINCLKUEN    = 0x1;								/* Update MCLK Clock Source */
+  while (!(LPC_SYSCON->MAINCLKUEN & 0x1));       /* Wait Until Updated       */
 
   LPC_SYSCON->SYSAHBCLKDIV  = SYSAHBCLKDIV_Val;
 #endif

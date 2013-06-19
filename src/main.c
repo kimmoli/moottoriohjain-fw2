@@ -62,35 +62,15 @@ void configurePins()
   /* U0_TXD */
   /* U0_RXD */
   LPC_SWM->PINASSIGN0 = 0xffff0004UL;
+  /* U1_TXD */
+  /* U1_RXD */
+  /* U1_RTS */
+  LPC_SWM->PINASSIGN1 = 0x020103ffUL;
 
   /* Pin Assign 1 bit Configuration */
-  #if !defined(USE_SWD)
-    /* Pin setup generated via Switch Matrix Tool
-       ------------------------------------------------
-       PIO0_5 = RESET
-       PIO0_4 = U0_TXD
-       PIO0_3 = GPIO            - Disables SWDCLK
-       PIO0_2 = GPIO (User LED) - Disables SWDIO
-       PIO0_1 = GPIO
-       PIO0_0 = U0_RXD
-       ------------------------------------------------
-       NOTE: SWD is disabled to free GPIO pins!
-       ------------------------------------------------ */
-    LPC_SWM->PINENABLE0 = 0xffffffbfUL;
-  #else
-    /* Pin setup generated via Switch Matrix Tool
-       ------------------------------------------------
-       PIO0_5 = RESET
-       PIO0_4 = U0_TXD
-       PIO0_3 = SWDCLK
-       PIO0_2 = SWDIO
-       PIO0_1 = GPIO
-       PIO0_0 = U0_RXD
-       ------------------------------------------------
-       NOTE: LED on PIO0_2 unavailable due to SWDIO!
-       ------------------------------------------------ */
-    LPC_SWM->PINENABLE0 = 0xffffffb3UL;   
-  #endif  
+  /* RESET */
+  LPC_SWM->PINENABLE0 = 0xffffffbfUL;
+
 }
 
 int main(void)
@@ -103,6 +83,7 @@ int main(void)
 
   /* Initialise the UART0 block for printf output */
   uart0Init(115200);
+  uart1Init(200000);
 
   /* Configure the multi-rate timer for 1ms ticks */
   mrtInit(SystemCoreClock/1000);
@@ -115,22 +96,34 @@ int main(void)
     LPC_GPIO_PORT->DIR0 |= (1 << LED_LOCATION);
   #endif
 
+  printf("SystemCoreClock %d\r\n", SystemCoreClock );
+  printf("MainClock %d\r\n", MainClock );
+  printf("LPC_SYSCON->UARTFRGMULT %d\r\n", LPC_SYSCON->UARTFRGMULT);
+  printf("LPC_SYSCON->UARTFRGDIV %d\r\n", LPC_SYSCON->UARTFRGDIV);
+  printf("LPC_USART0->BRG %d\r\n", LPC_USART0->BRG);
+  printf("LPC_SYSCON->SYSAHBCLKDIV %d\r\n", LPC_SYSCON->SYSAHBCLKDIV);
+  printf("LPC_SYSCON->SYSPLLCTRL %x\r\n", LPC_SYSCON->SYSPLLCTRL);
   while(1)
   {
-    #if !defined(USE_SWD)
+    #if 0//!defined(USE_SWD)
       /* Turn LED Off by setting the GPIO pin high */
       LPC_GPIO_PORT->SET0 = 1 << LED_LOCATION;
-      mrtDelay(500);
+      mrtDelay(200);
 
       /* Turn LED On by setting the GPIO pin low */
       LPC_GPIO_PORT->CLR0 = 1 << LED_LOCATION;
-      mrtDelay(500);
+      mrtDelay(10);
     #else
       /* Just insert a 1 second delay */
       mrtDelay(1000);
     #endif
 
     /* Send some text (printf is redirected to UART0) */
-    printf("Hello, LPC810!\n");
+    printf("Up in the ass of Timo...\r\n");
+
+    uart1SendChar(0x55, 1);
+    uart1SendChar(0x00, 0);
+    uart1SendChar(0xaa, 0);
+
   }
 }

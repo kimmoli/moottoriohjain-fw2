@@ -49,7 +49,7 @@ void uart0Init(uint32_t baudRate)
   LPC_SYSCON->PRESETCTRL    |=  (1 << 3);
 
   /* Configure UART0 */
-  clk = SystemCoreClock/LPC_SYSCON->UARTCLKDIV;
+  clk = MainClock/LPC_SYSCON->UARTCLKDIV;
   LPC_USART0->CFG = UART_DATA_LENGTH_8 | UART_PARITY_NONE | UART_STOP_BIT_1;
   LPC_USART0->BRG = clk / 16 / baudRate - 1;
   LPC_SYSCON->UARTFRGDIV = 0xFF;
@@ -66,12 +66,46 @@ void uart0Init(uint32_t baudRate)
   LPC_USART0->CFG |= UART_ENABLE;
 }
 
+void uart1Init(uint32_t baudRate)
+{
+  uint32_t clk;
+
+  NVIC_DisableIRQ(UART1_IRQn);
+  LPC_SYSCON->SYSAHBCLKCTRL |=  (1 << 15);
+  LPC_SYSCON->PRESETCTRL    &= ~(1 << 4);
+  LPC_SYSCON->PRESETCTRL    |=  (1 << 4);
+
+  /* Configure UART1 */
+  clk = MainClock/LPC_SYSCON->UARTCLKDIV;
+  LPC_USART1->CFG = UART_DATA_LENGTH_9 | UART_PARITY_NONE | UART_STOP_BIT_1;
+  LPC_USART1->CTRL = UART_ADDRDET;
+  LPC_USART1->BRG = clk / 16 / baudRate - 1;
+
+  /* Clear the status bits */
+  LPC_USART1->STAT = UART_STATUS_CTSDEL | UART_STATUS_RXBRKDEL;
+
+  /* Enable UART0 interrupt */
+  NVIC_EnableIRQ(UART1_IRQn);
+
+  /* Enable UART0 */
+  LPC_USART1->CFG |= UART_ENABLE;
+}
+
+
 void uart0SendChar(char buffer)
 {
   /* Wait until we're ready to send */
   while (!(LPC_USART0->STAT & UART_STATUS_TXRDY));
   LPC_USART0->TXDATA = buffer;
 }
+
+void uart1SendChar(char buffer, int addrbit)
+{
+  /* Wait until we're ready to send */
+  while (!(LPC_USART1->STAT & UART_STATUS_TXRDY));
+  LPC_USART1->TXDATA = buffer | (addrbit & 1) << 8;
+}
+
 
 void uart0Send(char *buffer, uint32_t length)
 {

@@ -44,8 +44,12 @@ extern "C" {
 
 #define UART_ENABLE          (1 << 0)
 #define UART_DATA_LENGTH_8   (1 << 2)
+#define UART_DATA_LENGTH_9   (2 << 2)
 #define UART_PARITY_NONE     (0 << 4)
 #define UART_STOP_BIT_1      (0 << 6)
+
+/*Control bits*/
+#define UART_ADDRDET		 (1 << 2)
 
 /* Status bits */
 #define UART_STATUS_RXRDY    (1 << 0)
@@ -56,7 +60,9 @@ extern "C" {
 #define UART_STATUS_RXBRKDEL (1 << 11)
 
 void uart0Init     (uint32_t baudRate);
+void uart1Init     (uint32_t baudRate);
 void uart0SendChar (char buffer);
+void uart1SendChar(char buffer, int addrbit);
 void uart0Send     (char *buffer, uint32_t length);
 
 #ifdef __cplusplus

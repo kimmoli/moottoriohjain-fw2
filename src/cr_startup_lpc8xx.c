@@ -42,6 +42,8 @@ extern "C" {
 #endif
 #endif
 
+#define __USE_CMSIS
+
 #define WEAK __attribute__ ((weak))
 #define ALIAS(f) __attribute__ ((weak, alias (#f)))
 
