@@ -61,12 +61,23 @@ extern "C" {
 #define UART_STATUS_CTSDEL   (1 << 5)
 #define UART_STATUS_RXBRKDEL (1 << 11)
 
+/* Interrupt bits */
+#define UART_INT_RXRDYEN (1 << 0)
+
+
+void UART1_IRQHandler(void);
+
 void uart0Init     (uint32_t baudRate);
 void uart1Init     (uint32_t baudRate);
 void uart0SendChar (char buffer);
 void uart1SendChar(char buffer, int addrbit);
 void uart0Send     (char *buffer, uint32_t length);
 void uart1Send(char *buffer, uint32_t length);
+
+extern volatile uint16_t rxBuf[128];
+extern volatile uint32_t rxCount;
+extern volatile uint32_t rxRead;
+int thisIsForMe;
 
 #ifdef __cplusplus
 }

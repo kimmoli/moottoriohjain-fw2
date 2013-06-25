@@ -38,6 +38,7 @@
 #include "mrt.h"
 
 volatile uint32_t mrt_counter = 0;
+volatile uint32_t mrtDelay_counter = 0;
 
 void MRT_IRQHandler(void)
 {
@@ -45,6 +46,7 @@ void MRT_IRQHandler(void)
   {
     LPC_MRT->Channel[0].STAT = MRT_STAT_IRQ_FLAG;      /* clear interrupt flag */
     mrt_counter++;
+    mrtDelay_counter++;
   }
   return;
 }
@@ -74,6 +76,6 @@ void mrtInit(uint32_t delay)
 
 void mrtDelay(uint32_t ticks)
 {
-  mrt_counter = 0;
-  while(mrt_counter < ticks);
+	mrtDelay_counter = 0;
+	while(mrtDelay_counter < ticks);
 }

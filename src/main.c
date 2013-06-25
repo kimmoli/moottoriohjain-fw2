@@ -37,6 +37,7 @@
 #include "gpio.h"
 #include "mrt.h"
 #include "uart.h"
+#include "crc.h"
 
 #if defined(__CODE_RED)
   #include <cr_section_macros.h>
@@ -73,7 +74,7 @@ void configurePins()
 int main(void)
 {
 
-  char iobusbuf[64] = "\0kimmo was here!" ;
+  //char iobusbuf[64] = "\0kimmo was here!" ;
 
   /* Configure the core clock/PLL via CMSIS */
   SystemCoreClockUpdate();
@@ -82,16 +83,19 @@ int main(void)
   gpioInit();
 
   /* Initialise the UART0 block for printf output */
-  uart0Init(115200);
+  uart0Init(2*115200);
 
   /* Initialise UART1 for IOBUS */
   uart1Init(200000);
 
-  /* Configure the multi-rate timer for 1ms ticks */
-  mrtInit(SystemCoreClock/1000);
+  /* Configure the multi-rate timer for 100us ticks */
+  mrtInit(SystemCoreClock/10000);
 
   /* Configure the switch matrix (setup pins for UART0 and GPIO) */
   configurePins();
+
+  /* Initialise CRC */
+  initCrc();
 
   /* Set the TXEN pin to output (1 = output, 0 = input) */
   LPC_GPIO_PORT->DIR0 |= (1 << TXEN_IO);
@@ -103,18 +107,51 @@ int main(void)
   printf("LPC_USART0->BRG %d\r\n", LPC_USART0->BRG);
   printf("LPC_SYSCON->SYSAHBCLKDIV %d\r\n", LPC_SYSCON->SYSAHBCLKDIV);
   printf("LPC_SYSCON->SYSPLLCTRL %x\r\n", LPC_SYSCON->SYSPLLCTRL);
+
+  rxRead = 0;
+
+  volatile uint32_t mrt_last = 0;
+
+  rxRead = 0;
+
   while(1)
   {
 
-    /* Just insert a 1 second delay */
-    mrtDelay(1000);
+//	  for (x=0; x<100; )
+	  if (rxCount != rxRead) // we have data in rxBuf
+	  {
+		  if ( rxBuf[rxRead] & 0x100 )
+		  {
+/*			  if (timedOut)
+			  {
+*/				  printf("%5d : ", (mrt_counter - mrt_last));
+/*				  timedOut = 0;
+			  }
+			  else
+			  {
+				  printf(" %s\r\n%5d : ", (LPC_CRC->SUM == 0x000 ? "ok" : "error"), (mrt_counter - mrt_last));
+			  }
+*/			  mrt_last = mrt_counter;
+			  LPC_CRC->SEED  = 0xFFFF;
+		  }
 
-    /* Send some text (printf is redirected to UART0) */
-    printf(".");
+		  LPC_CRC->WR_DATA_BYTE = rxBuf[rxRead];
+		  printf("%02x", rxBuf[rxRead] & 0xff);
 
-    /* Send something over RS-485 */
-    uart1Send( iobusbuf, 16);
-    uart0Send( iobusbuf, 16);
+		  if ( (rxBuf[rxRead] & 0x200) && (mrt_counter > (mrt_last+2)) ) // receiver is idle while receiving this character and there has elapsed some time
+			  printf(" %s\r\n", (LPC_CRC->SUM == 0x000 ? "ok" : "error") );//printf("i");
+
+		  rxRead++;
+		  rxRead &= 0x7F;
+	  }
+
+
+/*	  if ((mrt_counter > (mrt_last + 10000)) && !timedOut)
+	  {
+		  timedOut = 1;
+		  printf(" %s\r\n", (LPC_CRC->SUM == 0x000 ? "ok" : "error") );
+	  }
+*/
 
   }
 }

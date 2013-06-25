@@ -34,8 +34,40 @@
 */
 /**************************************************************************/
 #include <string.h>
+#include <stdio.h>
 
 #include "uart.h"
+#include "mrt.h"
+
+volatile uint16_t rxBuf[128];
+volatile uint32_t rxCount;
+volatile uint32_t rxRead;
+
+
+void UART1_IRQHandler(void)
+{
+	int i;
+
+	NVIC_DisableIRQ(UART1_IRQn);
+    /* Clear UART1 RXRDYEN interrupt */
+	LPC_USART1->INTENCLR |= UART_INT_RXRDYEN;
+
+	rxBuf[rxCount] = (LPC_USART1->RXDATA_STAT & 0x1FF);
+
+ 	if ((LPC_USART1->STAT & 0x0002))
+ 		rxBuf[rxCount] |=  0x0200;
+
+	rxCount++;
+	rxCount &= 0x7F;
+
+//	printf("%d %d\r\n", rxCount, rxRead);
+
+	NVIC_EnableIRQ(UART1_IRQn);
+	/* Enable UART1 RXRDYEN interrupt */
+	LPC_USART1->INTENSET |= UART_INT_RXRDYEN;
+
+
+}
 
 void uart0Init(uint32_t baudRate)
 {
@@ -71,6 +103,7 @@ void uart1Init(uint32_t baudRate)
   uint32_t clk;
 
   NVIC_DisableIRQ(UART1_IRQn);
+
   LPC_SYSCON->SYSAHBCLKCTRL |=  (1 << 15);
   LPC_SYSCON->PRESETCTRL    &= ~(1 << 4);
   LPC_SYSCON->PRESETCTRL    |=  (1 << 4);
@@ -78,7 +111,7 @@ void uart1Init(uint32_t baudRate)
   /* Configure UART1 */
   clk = MainClock/LPC_SYSCON->UARTCLKDIV;
   LPC_USART1->CFG = UART_DATA_LENGTH_9 | UART_PARITY_NONE | UART_STOP_BIT_1;
-  LPC_USART1->CTRL = UART_ADDRDET;
+  //LPC_USART1->CTRL |= UART_ADDRDET;
   LPC_USART1->BRG = clk / 16 / baudRate - 1;
 
   /* Clear the status bits */
@@ -89,6 +122,12 @@ void uart1Init(uint32_t baudRate)
 
   /* Enable UART0 */
   LPC_USART1->CFG |= UART_ENABLE;
+
+  /* Enable UART1 RXRDYEN interrupt */
+  LPC_USART1->INTENSET |= UART_INT_RXRDYEN;
+
+  rxCount = 0;
+  thisIsForMe = 0;
 }
 
 

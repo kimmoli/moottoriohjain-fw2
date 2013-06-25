@@ -49,5 +49,6 @@
 void MRT_IRQHandler(void);
 void mrtInit(uint32_t delay);
 void mrtDelay(uint32_t ticks);
+extern volatile uint32_t mrt_counter;
 
 #endif
