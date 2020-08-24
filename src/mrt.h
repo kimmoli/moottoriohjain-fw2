@@ -51,4 +51,22 @@ void mrtInit(uint32_t delay);
 void mrtDelay(uint32_t ticks);
 extern volatile uint32_t mrt_counter;
 
+#define STOP (0)
+#define NOSIG (1)
+#define CW (2)
+#define CCW (3)
+
+#define PWM_FREQ 16000
+#define PERIOD_RELOAD (SystemCoreClock/PWM_FREQ)
+#define MIN_RATE (PERIOD_RELOAD/10)
+#define MAX_RATE (PERIOD_RELOAD-MIN_RATE)
+
+extern int st1;
+extern int st2;
+extern int drive;
+extern int turn;
+
+extern int rate;
+
+
 #endif

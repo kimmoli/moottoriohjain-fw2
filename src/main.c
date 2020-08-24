@@ -33,17 +33,24 @@
 */
 /**************************************************************************/
 #include <stdio.h>
+#include <string.h>
 #include "LPC8xx.h"
 #include "gpio.h"
 #include "mrt.h"
 #include "uart.h"
-#include "crc.h"
+//#include "crc.h"
+//#include "sct.h"
+//#include "spi.h"
 
 #if defined(__CODE_RED)
   #include <cr_section_macros.h>
   #include <NXP/crp.h>
   __CRP const unsigned int CRP_WORD = CRP_NO_CRP ;
 #endif
+
+#include "sct_fsm.h"
+
+#define MIN 1500
 
 /* This define should be enabled if you want to      */
 /* maintain an SWD/debug connection to the LPC810,   */
@@ -52,54 +59,215 @@
 /* SWDIO pin (PIO0_2).                               */
 // #define USE_SWD
 
+
+  /*
+	PIO0_6	M1CW	Output
+	PIO0_7	M1CCW	Output
+	PIO0_8	M2CW	Output
+	PIO0_9	M2CCW	Output
+
+	PIO0_1	ST	Input
+
+	PIO0_13	LED	Output
+	PIO0_4	TXD
+	PIO0_0	RXD
+
+	PIO0_3	S2	Input
+	PIO0_2	S1	Input
+   * */
+
+int st1 = NOSIG;
+int st2 = NOSIG;
+
+int drive = STOP;
+int turn = STOP;
+
+int rate = 0;
+
 void configurePins()
 {
-  /* Enable SWM clock */
-  LPC_SYSCON->SYSAHBCLKCTRL |= (1 << 7);
+    /* Enable SWM clock */
+    LPC_SYSCON->SYSAHBCLKCTRL |= (1<<7);
 
-  /* Pin Assign 8 bit Configuration */
-  /* U0_TXD */
-  /* U0_RXD */
-  LPC_SWM->PINASSIGN0 = 0xffff0004UL;
-  /* U1_TXD */
-  /* U1_RXD */
-  LPC_SWM->PINASSIGN1 = 0xff0103ffUL;
 
-  /* Pin Assign 1 bit Configuration */
-  /* RESET */
-  LPC_SWM->PINENABLE0 = 0xffffffbfUL;
+    /* Pin Assign 8 bit Configuration */
+    /* U0_TXD */
+    /* U0_RXD */
+    LPC_SWM->PINASSIGN0 = 0xffff0004UL;
+
+    /* Pin Assign 1 bit Configuration */
+    /* RESET */
+    LPC_SWM->PINENABLE0 = 0xffffffbfUL;
+
+    /* CTIN_0 */
+    LPC_SWM->PINASSIGN5 = 0x02ffffffUL;	// CTIN_0 -> PIO0_2
+    /* CTIN_1 */
+    LPC_SWM->PINASSIGN6 = 0xffffff03UL;	// CTIN_1 -> PIO0_3
+    /* CTOUT_0 */
+    // LPC_SWM->PINASSIGN6 = 0x06ffffffUL; // CTOUT_0 -> PIO0_6
+    /* CTOUT_1 */
+    // LPC_SWM->PINASSIGN7 = 0xffffff07UL;	// CTOUT_1 -> PIO0_7
+
+
+    /* Outputs */
+    LPC_GPIO_PORT->DIR0 |= (1 << 6);
+    LPC_GPIO_PORT->DIR0 |= (1 << 7);
+    LPC_GPIO_PORT->DIR0 |= (1 << 8);
+    LPC_GPIO_PORT->DIR0 |= (1 << 9);
+    LPC_GPIO_PORT->DIR0 |= (1 << 13); // PIO0_13 = LED~ out
+
+	/* Pin I/O Configuration */
+	/* LPC_IOCON->PIO0_0 = 0x90; */
+	LPC_IOCON->PIO0_1 = 0x490;
+	LPC_IOCON->PIO0_2 = 0x88;
+	LPC_IOCON->PIO0_3 = 0x88;
+	/* LPC_IOCON->PIO0_4 = 0x90; */
+	/* LPC_IOCON->PIO0_5 = 0x90; */
+	LPC_IOCON->PIO0_6 = 0x88;
+	LPC_IOCON->PIO0_7 = 0x88;
+	LPC_IOCON->PIO0_8 = 0x88;
+	LPC_IOCON->PIO0_9 = 0x88;
+	/* LPC_IOCON->PIO0_10 = 0x80; */
+	/* LPC_IOCON->PIO0_11 = 0x80; */
+	/* LPC_IOCON->PIO0_12 = 0x90; */
+	/* LPC_IOCON->PIO0_13 = 0x90; */
+
+	LPC_GPIO_PORT->SET0 = (1 << 1);
+	LPC_GPIO_PORT->DIR0 |= (1 << 1);
+
+}
+
+#define CW_MIN 1500
+#define CW_MAX 1900
+#define CCW_MIN 1400
+#define CCW_MAX 1000
+
+int scale(int x, int a, int b, int min, int max)
+{
+	int val = ( (b - a) * (x - min) ) / (max - min) + a;
+
+	if (val < a)
+	    val = a;
+	else if (val > b)
+	    val = b;
+
+	return val;
+}
+
+void SCT_IRQHandler (void)
+{
+	uint32_t status = LPC_SCT->EVFLAG;
+
+	if (turn == STOP && (status & (1u << SCT_IRQ_EVENT_signal1_width))) // eteen-taakse
+	{
+		/* New measurement result */
+
+		if (SCT_CAPTURE_cap_signal1_width >= CW_MIN)
+		{
+			rate = scale(SCT_CAPTURE_cap_signal1_width, MIN_RATE, MAX_RATE, CW_MAX, CW_MIN);
+			st1 = CW;
+			st2 = CW;
+			drive = CW;
+		}
+		else if (SCT_CAPTURE_cap_signal1_width <= CCW_MIN)
+		{
+			rate = scale(SCT_CAPTURE_cap_signal1_width, MIN_RATE, MAX_RATE, CCW_MAX, CCW_MIN);
+			st1 = CCW;
+			st2 = CCW;
+			drive = CCW;
+		}
+		else
+		{
+			drive = STOP;
+		}
+	}
+
+	if (status & (1u << SCT_IRQ_EVENT_signal1_no_signal))
+	{
+		/* Time-out (no signal) */
+		  LPC_GPIO_PORT->CLR0 = 0x3 << 6; // clear all outputs
+		  if (st1 != NOSIG)
+			  printf("M1 no signal\r\n");
+		  st1 = NOSIG;
+		  drive = STOP;
+		  turn = STOP;
+	}
+
+	if (drive == STOP && (status & (1u << SCT_IRQ_EVENT_signal2_width))) // vasen/oikea
+	{
+		/* New measurement result */
+
+		if (SCT_CAPTURE_cap_signal2_width >= CW_MIN)
+		{
+			rate = scale(SCT_CAPTURE_cap_signal2_width, MIN_RATE, MAX_RATE, CW_MAX, CW_MIN);
+			st1 = CW;
+			st2 = CCW;
+			turn = CW;
+		}
+		else if (SCT_CAPTURE_cap_signal2_width <= CCW_MIN)
+		{
+			rate = scale(SCT_CAPTURE_cap_signal2_width, MIN_RATE, MAX_RATE, CCW_MAX, CCW_MIN);
+			st1 = CCW;
+			st2 = CW;
+			turn = CCW;
+		}
+		else
+		{
+			turn = STOP;
+		}
+	}
+
+	if (status & (1u << SCT_IRQ_EVENT_signal2_no_signal))
+	{
+		/* Time-out (no signal) */
+		  LPC_GPIO_PORT->CLR0 = 0x3 << 8; // clear all outputs
+		  if (st2 != NOSIG)
+			  printf("M2 no signal\r\n");
+		  st2 = NOSIG;
+		  drive = STOP;
+		  turn = STOP;
+	}
+
+	if (st1 == NOSIG || st2 == NOSIG)
+	{
+		LPC_GPIO_PORT->CLR0 = (1 << 1);
+	}
+	else
+	{
+		LPC_GPIO_PORT->SET0 = (1 << 1);
+	}
+
+	if ((drive == STOP && turn == STOP) || st1 == NOSIG || st2 == NOSIG)
+	{
+		st1 = STOP;
+		st2 = STOP;
+	}
+
+	/* Acknowledge interrupts */
+	LPC_SCT->EVFLAG = status;
 }
 
 
 int main(void)
 {
-
-  //char iobusbuf[64] = "\0kimmo was here!" ;
-
   /* Configure the core clock/PLL via CMSIS */
   SystemCoreClockUpdate();
 
-  /* Initialise the GPIO block */
+  /* Initialize the GPIO block */
   gpioInit();
 
-  /* Initialise the UART0 block for printf output */
-  uart0Init(2*115200);
-
-  /* Initialise UART1 for IOBUS */
-  uart1Init(200000);
+  /* Initialize the UART0 block for printf output */
+  uart0Init(115200);
 
   /* Configure the multi-rate timer for 100us ticks */
-  mrtInit(SystemCoreClock/10000);
+  mrtInit(SystemCoreClock/1000);
 
   /* Configure the switch matrix (setup pins for UART0 and GPIO) */
   configurePins();
 
-  /* Initialise CRC */
-  initCrc();
+  LPC_GPIO_PORT->CLR0 = 1 << 13; // lit led
 
-  /* Set the TXEN pin to output (1 = output, 0 = input) */
-  LPC_GPIO_PORT->DIR0 |= (1 << TXEN_IO);
-
+  printf("** MOOTTORIOHJAIN **\r\n");
   printf("SystemCoreClock %d\r\n", SystemCoreClock );
   printf("MainClock %d\r\n", MainClock );
   printf("LPC_SYSCON->UARTFRGMULT %d\r\n", LPC_SYSCON->UARTFRGMULT);
@@ -108,50 +276,46 @@ int main(void)
   printf("LPC_SYSCON->SYSAHBCLKDIV %d\r\n", LPC_SYSCON->SYSAHBCLKDIV);
   printf("LPC_SYSCON->SYSPLLCTRL %x\r\n", LPC_SYSCON->SYSPLLCTRL);
 
+  // enable the SCT clock
+  LPC_SYSCON->SYSAHBCLKCTRL |= (1 << 8);
+
+  // clear peripheral reset the SCT:
+  LPC_SYSCON->PRESETCTRL |= ( 1<< 8);
+
+
+  // Initialize it:
+  sct_fsm_init();							/* Init code from RedState tool */
+  LPC_SCT->CTRL_U = (LPC_SCT->CTRL_U & ~SCT_CTRL_U_PRE_L_Msk) | ((SCT_PRESCALER << SCT_CTRL_U_PRE_L_Pos) & SCT_CTRL_U_PRE_L_Msk);
+  LPC_SCT->CTRL_U = (LPC_SCT->CTRL_U & ~SCT_CTRL_U_PRE_H_Msk) | ((SCT_PRESCALER << SCT_CTRL_U_PRE_H_Pos) & SCT_CTRL_U_PRE_H_Msk);
+
+  // unhalt it: - clearing bit 2 of the CTRL register
+  LPC_SCT->CTRL_U &= ~SCT_CTRL_U_HALT_L_Msk;
+  LPC_SCT->CTRL_U &= ~SCT_CTRL_U_HALT_H_Msk;
+
+  // Enable SCT interrupt
+  NVIC_EnableIRQ(SCT_IRQn);
+
   rxRead = 0;
 
   volatile uint32_t mrt_last = 0;
 
   rxRead = 0;
 
+  LPC_GPIO_PORT->CLR0 = 0xf << 6; // clear all outputs
+
+  LPC_MRT->Channel[3].INTVAL = PERIOD_RELOAD;
+  LPC_MRT->Channel[3].INTVAL |= 0x1UL<<31;
+
   while(1)
   {
-
-//	  for (x=0; x<100; )
-	  if (rxCount != rxRead) // we have data in rxBuf
+	  __WFI();
+	  if (mrt_counter > (mrt_last + 50))
 	  {
-		  if ( rxBuf[rxRead] & 0x100 )
-		  {
-/*			  if (timedOut)
-			  {
-*/				  printf("%5d : ", (mrt_counter - mrt_last));
-/*				  timedOut = 0;
-			  }
-			  else
-			  {
-				  printf(" %s\r\n%5d : ", (LPC_CRC->SUM == 0x000 ? "ok" : "error"), (mrt_counter - mrt_last));
-			  }
-*/			  mrt_last = mrt_counter;
-			  LPC_CRC->SEED  = 0xFFFF;
-		  }
-
-		  LPC_CRC->WR_DATA_BYTE = rxBuf[rxRead];
-		  printf("%02x", rxBuf[rxRead] & 0xff);
-
-		  if ( (rxBuf[rxRead] & 0x200) && (mrt_counter > (mrt_last+2)) ) // receiver is idle while receiving this character and there has elapsed some time
-			  printf(" %s\r\n", (LPC_CRC->SUM == 0x000 ? "ok" : "error") );//printf("i");
-
-		  rxRead++;
-		  rxRead &= 0x7F;
+		  mrt_last = mrt_counter;
+			  LPC_GPIO_PORT->NOT0 = 1 << 13; // toggle led
 	  }
-
-
-/*	  if ((mrt_counter > (mrt_last + 10000)) && !timedOut)
-	  {
-		  timedOut = 1;
-		  printf(" %s\r\n", (LPC_CRC->SUM == 0x000 ? "ok" : "error") );
-	  }
-*/
-
   }
 }
+
+
+

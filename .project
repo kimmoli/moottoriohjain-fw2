@@ -23,16 +23,4 @@
 		<nature>org.eclipse.cdt.managedbuilder.core.managedBuildNature</nature>
 		<nature>org.eclipse.cdt.managedbuilder.core.ScannerConfigNature</nature>
 	</natures>
-	<linkedResources>
-		<link>
-			<name>src/crc16.c</name>
-			<type>1</type>
-			<location>C:/Users/kimmo.lindholm/Documents/LPCXpresso_5.2.4_2122/workspace/LPC810_CodeBase/src/crc16.c</location>
-		</link>
-		<link>
-			<name>src/crc16.h</name>
-			<type>1</type>
-			<location>C:/Users/kimmo.lindholm/Documents/LPCXpresso_5.2.4_2122/workspace/LPC810_CodeBase/src/crc16.h</location>
-		</link>
-	</linkedResources>
 </projectDescription>

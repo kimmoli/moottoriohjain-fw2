@@ -40,6 +40,7 @@
 volatile uint32_t mrt_counter = 0;
 volatile uint32_t mrtDelay_counter = 0;
 
+
 void MRT_IRQHandler(void)
 {
   if ( LPC_MRT->Channel[0].STAT & MRT_STAT_IRQ_FLAG )
@@ -48,6 +49,42 @@ void MRT_IRQHandler(void)
     mrt_counter++;
     mrtDelay_counter++;
   }
+
+  if ( LPC_MRT->Channel[1].STAT & MRT_STAT_IRQ_FLAG ) // M1
+  {
+    LPC_MRT->Channel[1].STAT = MRT_STAT_IRQ_FLAG;      /* clear interrupt flag */
+
+	if (st1 == CW)
+	{
+		LPC_GPIO_PORT->CLR0 = 0x2 << 6;
+		LPC_GPIO_PORT->SET0 = 0x1 << 6;
+	}
+	else if (st1 == CCW)
+	{
+		LPC_GPIO_PORT->CLR0 = 0x1 << 6;
+		LPC_GPIO_PORT->SET0 = 0x2 << 6;
+	}
+	if (st2 == CW)
+	{
+		LPC_GPIO_PORT->CLR0 = 0x2 << 8;
+		LPC_GPIO_PORT->SET0 = 0x1 << 8;
+	}
+	else if (st2 == CCW)
+	{
+		LPC_GPIO_PORT->CLR0 = 0x1 << 8;
+		LPC_GPIO_PORT->SET0 = 0x2 << 8;
+	}
+  }
+
+  if ( LPC_MRT->Channel[3].STAT & MRT_STAT_IRQ_FLAG )
+  {
+    LPC_MRT->Channel[3].STAT = MRT_STAT_IRQ_FLAG;      /* clear interrupt flag */
+
+    LPC_GPIO_PORT->CLR0 = 0x3C0; // clear all outputs
+
+    LPC_MRT->Channel[1].INTVAL = rate | 0x1UL<<31;  // reload the other timer to generate PWM
+  }
+
   return;
 }
 
@@ -63,6 +100,8 @@ void mrtInit(uint32_t delay)
   LPC_MRT->Channel[0].INTVAL |= 0x1UL<<31;
 
   LPC_MRT->Channel[0].CTRL = MRT_REPEATED_MODE|MRT_INT_ENA;
+  LPC_MRT->Channel[1].CTRL = MRT_ONE_SHOT_INT|MRT_INT_ENA;
+  LPC_MRT->Channel[3].CTRL = MRT_REPEATED_MODE|MRT_INT_ENA;
 
   /* Enable the MRT Interrupt */
 #if NMI_ENABLED

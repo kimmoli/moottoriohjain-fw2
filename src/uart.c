@@ -46,8 +46,6 @@ volatile uint32_t rxRead;
 
 void UART1_IRQHandler(void)
 {
-	int i;
-
 	NVIC_DisableIRQ(UART1_IRQn);
     /* Clear UART1 RXRDYEN interrupt */
 	LPC_USART1->INTENCLR |= UART_INT_RXRDYEN;
