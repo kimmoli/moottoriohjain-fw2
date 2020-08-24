@@ -41,7 +41,6 @@
 
 volatile uint16_t rxBuf[128];
 volatile uint32_t rxCount;
-volatile uint32_t rxRead;
 
 
 void UART1_IRQHandler(void)

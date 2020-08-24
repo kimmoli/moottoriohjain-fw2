@@ -76,7 +76,6 @@ void uart1Send(char *buffer, uint32_t length);
 
 extern volatile uint16_t rxBuf[128];
 extern volatile uint32_t rxCount;
-extern volatile uint32_t rxRead;
 int thisIsForMe;
 
 #ifdef __cplusplus

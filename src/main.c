@@ -79,8 +79,8 @@
 int st1 = NOSIG;
 int st2 = NOSIG;
 
-int drive = STOP;
 int turn = STOP;
+int drive = STOP;
 
 int rate = 0;
 
@@ -137,9 +137,9 @@ void configurePins()
 
 }
 
-#define CW_MIN 1500
+#define CW_MIN 1550
 #define CW_MAX 1900
-#define CCW_MIN 1400
+#define CCW_MIN 1350
 #define CCW_MAX 1000
 
 int scale(int x, int a, int b, int min, int max)
@@ -158,7 +158,33 @@ void SCT_IRQHandler (void)
 {
 	uint32_t status = LPC_SCT->EVFLAG;
 
-	if (turn == STOP && (status & (1u << SCT_IRQ_EVENT_signal1_width))) // eteen-taakse
+
+	if ((status & (1u << SCT_IRQ_EVENT_signal1_no_signal)) || (status & (1u << SCT_IRQ_EVENT_signal2_no_signal)))
+	{
+		/* Time-out (no signal) */
+		printf("NOSIG\r\n");
+
+	    LPC_GPIO_PORT->CLR0 = 0x3C0; // clear all outputs
+
+	    st1 = NOSIG;
+		st2 = NOSIG;
+		turn = STOP;
+		drive = STOP;
+		rate = 0;
+
+		LPC_SCT->EVFLAG = status;
+
+		LPC_GPIO_PORT->CLR0 = (1 << 1);
+
+		return;
+	}
+
+	if ((status & (1u << SCT_IRQ_EVENT_signal1_width)) || (status & (1u << SCT_IRQ_EVENT_signal2_width)))
+	{
+		LPC_GPIO_PORT->SET0 = (1 << 1);
+	}
+
+	if (drive == STOP && (status & (1u << SCT_IRQ_EVENT_signal1_width))) // vasen-oikea
 	{
 		/* New measurement result */
 
@@ -167,33 +193,33 @@ void SCT_IRQHandler (void)
 			rate = scale(SCT_CAPTURE_cap_signal1_width, MIN_RATE, MAX_RATE, CW_MAX, CW_MIN);
 			st1 = CW;
 			st2 = CW;
-			drive = CW;
+			if (turn != CW) printf("TURN CW\r\n");
+			turn = CW;
 		}
 		else if (SCT_CAPTURE_cap_signal1_width <= CCW_MIN)
 		{
 			rate = scale(SCT_CAPTURE_cap_signal1_width, MIN_RATE, MAX_RATE, CCW_MAX, CCW_MIN);
 			st1 = CCW;
 			st2 = CCW;
-			drive = CCW;
+			if (turn != CCW) printf("TURN CCW\r\n");
+			turn = CCW;
 		}
 		else
 		{
-			drive = STOP;
+			rate = 0;
+			st1 = STOP;
+			st2 = STOP;
+			if (turn != STOP) printf("TURN STOP\r\n");
+			turn = STOP;
 		}
 	}
 
-	if (status & (1u << SCT_IRQ_EVENT_signal1_no_signal))
+	if (turn != STOP || drive != STOP)
 	{
-		/* Time-out (no signal) */
-		  LPC_GPIO_PORT->CLR0 = 0x3 << 6; // clear all outputs
-		  if (st1 != NOSIG)
-			  printf("M1 no signal\r\n");
-		  st1 = NOSIG;
-		  drive = STOP;
-		  turn = STOP;
+		printf("%d\r\n", 100-((rate*100)/PERIOD_RELOAD));
 	}
 
-	if (drive == STOP && (status & (1u << SCT_IRQ_EVENT_signal2_width))) // vasen/oikea
+	if (turn == STOP && (status & (1u << SCT_IRQ_EVENT_signal2_width))) // eteen-taakse
 	{
 		/* New measurement result */
 
@@ -202,45 +228,25 @@ void SCT_IRQHandler (void)
 			rate = scale(SCT_CAPTURE_cap_signal2_width, MIN_RATE, MAX_RATE, CW_MAX, CW_MIN);
 			st1 = CW;
 			st2 = CCW;
-			turn = CW;
+			if (drive != CW) printf("DRIVE CW\r\n");
+			drive = CW;
 		}
 		else if (SCT_CAPTURE_cap_signal2_width <= CCW_MIN)
 		{
 			rate = scale(SCT_CAPTURE_cap_signal2_width, MIN_RATE, MAX_RATE, CCW_MAX, CCW_MIN);
 			st1 = CCW;
 			st2 = CW;
-			turn = CCW;
+			if (drive != CCW) printf("DRIVE CCW\r\n");
+			drive = CCW;
 		}
 		else
 		{
-			turn = STOP;
+			rate = 0;
+			st1 = STOP;
+			st2 = STOP;
+			if (drive != STOP) printf("DRIVE STOP\r\n");
+			drive = STOP;
 		}
-	}
-
-	if (status & (1u << SCT_IRQ_EVENT_signal2_no_signal))
-	{
-		/* Time-out (no signal) */
-		  LPC_GPIO_PORT->CLR0 = 0x3 << 8; // clear all outputs
-		  if (st2 != NOSIG)
-			  printf("M2 no signal\r\n");
-		  st2 = NOSIG;
-		  drive = STOP;
-		  turn = STOP;
-	}
-
-	if (st1 == NOSIG || st2 == NOSIG)
-	{
-		LPC_GPIO_PORT->CLR0 = (1 << 1);
-	}
-	else
-	{
-		LPC_GPIO_PORT->SET0 = (1 << 1);
-	}
-
-	if ((drive == STOP && turn == STOP) || st1 == NOSIG || st2 == NOSIG)
-	{
-		st1 = STOP;
-		st2 = STOP;
 	}
 
 	/* Acknowledge interrupts */
@@ -254,12 +260,13 @@ int main(void)
   SystemCoreClockUpdate();
 
   /* Initialize the GPIO block */
+  LPC_GPIO_PORT->CLR0 = 0xf << 6; // clear all outputs
   gpioInit();
 
   /* Initialize the UART0 block for printf output */
   uart0Init(115200);
 
-  /* Configure the multi-rate timer for 100us ticks */
+  /* Configure the multi-rate timer for 1ms ticks */
   mrtInit(SystemCoreClock/1000);
 
   /* Configure the switch matrix (setup pins for UART0 and GPIO) */
@@ -275,6 +282,9 @@ int main(void)
   printf("LPC_USART0->BRG %d\r\n", LPC_USART0->BRG);
   printf("LPC_SYSCON->SYSAHBCLKDIV %d\r\n", LPC_SYSCON->SYSAHBCLKDIV);
   printf("LPC_SYSCON->SYSPLLCTRL %x\r\n", LPC_SYSCON->SYSPLLCTRL);
+
+  LPC_GPIO_PORT->CLR0 = (1 << 1);
+  mrtDelay(2000);
 
   // enable the SCT clock
   LPC_SYSCON->SYSAHBCLKCTRL |= (1 << 8);
@@ -295,24 +305,17 @@ int main(void)
   // Enable SCT interrupt
   NVIC_EnableIRQ(SCT_IRQn);
 
-  rxRead = 0;
-
   volatile uint32_t mrt_last = 0;
 
-  rxRead = 0;
-
-  LPC_GPIO_PORT->CLR0 = 0xf << 6; // clear all outputs
-
-  LPC_MRT->Channel[3].INTVAL = PERIOD_RELOAD;
-  LPC_MRT->Channel[3].INTVAL |= 0x1UL<<31;
+  LPC_MRT->Channel[3].INTVAL = PERIOD_RELOAD | 0x1UL<<31;
 
   while(1)
   {
 	  __WFI();
-	  if (mrt_counter > (mrt_last + 50))
+	  if (mrt_counter > (mrt_last + 100))
 	  {
 		  mrt_last = mrt_counter;
-			  LPC_GPIO_PORT->NOT0 = 1 << 13; // toggle led
+		  LPC_GPIO_PORT->NOT0 = 1 << 13; // toggle led
 	  }
   }
 }
