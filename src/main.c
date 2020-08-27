@@ -66,7 +66,7 @@
 	PIO0_8	M2CW	Output
 	PIO0_9	M2CCW	Output
 
-	PIO0_1	ST	Input
+	PIO0_1	ST Led	I/O (open drain)
 
 	PIO0_13	LED	Output
 	PIO0_4	TXD
@@ -74,6 +74,9 @@
 
 	PIO0_3	S2	Input
 	PIO0_2	S1	Input
+
+	PIO0_10 S3    Input
+	PIO0_11 RELAY Output
    * */
 
 int st1 = NOSIG;
@@ -83,6 +86,7 @@ int turn = STOP;
 int drive = STOP;
 
 int rate = 0;
+int pp = 0;
 
 void configurePins()
 {
@@ -108,7 +112,7 @@ void configurePins()
     /* CTOUT_1 */
     // LPC_SWM->PINASSIGN7 = 0xffffff07UL;	// CTOUT_1 -> PIO0_7
 
-
+	LPC_GPIO_PORT->CLR0 = 0x3C0; // clear all outputs
     /* Outputs */
     LPC_GPIO_PORT->DIR0 |= (1 << 6);
     LPC_GPIO_PORT->DIR0 |= (1 << 7);
@@ -118,7 +122,7 @@ void configurePins()
 
 	/* Pin I/O Configuration */
 	/* LPC_IOCON->PIO0_0 = 0x90; */
-	LPC_IOCON->PIO0_1 = 0x490;
+	LPC_IOCON->PIO0_1 = 0x490; // Opendrain
 	LPC_IOCON->PIO0_2 = 0x88;
 	LPC_IOCON->PIO0_3 = 0x88;
 	/* LPC_IOCON->PIO0_4 = 0x90; */
@@ -127,20 +131,19 @@ void configurePins()
 	LPC_IOCON->PIO0_7 = 0x88;
 	LPC_IOCON->PIO0_8 = 0x88;
 	LPC_IOCON->PIO0_9 = 0x88;
-	/* LPC_IOCON->PIO0_10 = 0x80; */
-	/* LPC_IOCON->PIO0_11 = 0x80; */
+	LPC_IOCON->PIO0_10 = 0x180;
+	LPC_IOCON->PIO0_11 = 0x180;
 	/* LPC_IOCON->PIO0_12 = 0x90; */
 	/* LPC_IOCON->PIO0_13 = 0x90; */
 
+	// ST led
 	LPC_GPIO_PORT->SET0 = (1 << 1);
 	LPC_GPIO_PORT->DIR0 |= (1 << 1);
 
+	// Relay control output
+	LPC_GPIO_PORT->CLR0 = (1 << 10);
+	LPC_GPIO_PORT->DIR0 |= (1 << 10);
 }
-
-#define CW_MIN 1550
-#define CW_MAX 1900
-#define CCW_MIN 1350
-#define CCW_MAX 1000
 
 int scale(int x, int a, int b, int min, int max)
 {
@@ -154,15 +157,24 @@ int scale(int x, int a, int b, int min, int max)
 	return val;
 }
 
+void PININT0_IRQHandler(void)
+{
+	// rising edge on GPIO 11. 
+	// Start timer to check is the input still high after 1500µs
+	// 24 MHz 
+
+	LPC_MRT->Channel[3].INTVAL = 36000 | 0x1UL << 31;
+	LPC_PIN_INT->RISE = 0x1;
+}
+
 void SCT_IRQHandler (void)
 {
 	uint32_t status = LPC_SCT->EVFLAG;
-
+	int p = 0;
 
 	if ((status & (1u << SCT_IRQ_EVENT_signal1_no_signal)) || (status & (1u << SCT_IRQ_EVENT_signal2_no_signal)))
 	{
 		/* Time-out (no signal) */
-		printf("NOSIG\r\n");
 
 	    LPC_GPIO_PORT->CLR0 = 0x3C0; // clear all outputs
 
@@ -173,15 +185,7 @@ void SCT_IRQHandler (void)
 		rate = 0;
 
 		LPC_SCT->EVFLAG = status;
-
-		LPC_GPIO_PORT->CLR0 = (1 << 1);
-
-		return;
-	}
-
-	if ((status & (1u << SCT_IRQ_EVENT_signal1_width)) || (status & (1u << SCT_IRQ_EVENT_signal2_width)))
-	{
-		LPC_GPIO_PORT->SET0 = (1 << 1);
+		status = 0;
 	}
 
 	if (drive == STOP && (status & (1u << SCT_IRQ_EVENT_signal1_width))) // vasen-oikea
@@ -193,7 +197,7 @@ void SCT_IRQHandler (void)
 			rate = scale(SCT_CAPTURE_cap_signal1_width, MIN_RATE, MAX_RATE, CW_MAX, CW_MIN);
 			st1 = CW;
 			st2 = CW;
-			if (turn != CW) printf("TURN CW\r\n");
+			if (turn != CW) printf("TURN CW ");
 			turn = CW;
 		}
 		else if (SCT_CAPTURE_cap_signal1_width <= CCW_MIN)
@@ -201,7 +205,7 @@ void SCT_IRQHandler (void)
 			rate = scale(SCT_CAPTURE_cap_signal1_width, MIN_RATE, MAX_RATE, CCW_MAX, CCW_MIN);
 			st1 = CCW;
 			st2 = CCW;
-			if (turn != CCW) printf("TURN CCW\r\n");
+			if (turn != CCW) printf("TURN CCW ");
 			turn = CCW;
 		}
 		else
@@ -214,11 +218,6 @@ void SCT_IRQHandler (void)
 		}
 	}
 
-	if (turn != STOP || drive != STOP)
-	{
-		printf("%d\r\n", 100-((rate*100)/PERIOD_RELOAD));
-	}
-
 	if (turn == STOP && (status & (1u << SCT_IRQ_EVENT_signal2_width))) // eteen-taakse
 	{
 		/* New measurement result */
@@ -228,7 +227,7 @@ void SCT_IRQHandler (void)
 			rate = scale(SCT_CAPTURE_cap_signal2_width, MIN_RATE, MAX_RATE, CW_MAX, CW_MIN);
 			st1 = CW;
 			st2 = CCW;
-			if (drive != CW) printf("DRIVE CW\r\n");
+			if (drive != CW) printf("DRIVE FWD ");
 			drive = CW;
 		}
 		else if (SCT_CAPTURE_cap_signal2_width <= CCW_MIN)
@@ -236,7 +235,7 @@ void SCT_IRQHandler (void)
 			rate = scale(SCT_CAPTURE_cap_signal2_width, MIN_RATE, MAX_RATE, CCW_MAX, CCW_MIN);
 			st1 = CCW;
 			st2 = CW;
-			if (drive != CCW) printf("DRIVE CCW\r\n");
+			if (drive != CCW) printf("DRIVE REV ");
 			drive = CCW;
 		}
 		else
@@ -247,6 +246,14 @@ void SCT_IRQHandler (void)
 			if (drive != STOP) printf("DRIVE STOP\r\n");
 			drive = STOP;
 		}
+	}
+
+	p = 100 - ((rate * 100) / PERIOD_RELOAD);
+
+	if ((turn != STOP || drive != STOP) && pp != p)
+	{
+		printf("%d%% ", p);
+		pp = p;
 	}
 
 	/* Acknowledge interrupts */
@@ -307,15 +314,36 @@ int main(void)
 
   volatile uint32_t mrt_last = 0;
 
-  LPC_MRT->Channel[3].INTVAL = PERIOD_RELOAD | 0x1UL<<31;
+  LPC_MRT->Channel[2].INTVAL = PERIOD_RELOAD | 0x1UL<<31;
+
+  LPC_SYSCON->SYSAHBCLKCTRL |= (1 << 6); // enable GPIO Interrupt controller clock
+  LPC_SYSCON->PINTSEL[0] = 11; // pin 11 interrupt 0
+  LPC_PIN_INT->ISEL = 0x0; // edge sensitive
+  LPC_PIN_INT->IENR = 0x1; // rising
+  LPC_PIN_INT->IST = 0xFF;
+
+  NVIC_EnableIRQ(PININT0_IRQn); // Enable GPIO interrupt
 
   while(1)
   {
 	  __WFI();
-	  if (mrt_counter > (mrt_last + 100))
+	  if (mrt_counter > (mrt_last + 200))
 	  {
 		  mrt_last = mrt_counter;
 		  LPC_GPIO_PORT->NOT0 = 1 << 13; // toggle led
+
+		  if (!signalok)
+		  {
+			  printf("No signal!\r\n");
+			  LPC_GPIO_PORT->CLR0 = (1 << 10); // Relay off
+			  LPC_GPIO_PORT->CLR0 = (1 << 1); // ST Led on
+		  }
+		  else
+		  {
+			  LPC_GPIO_PORT->SET0 = (1 << 1); // ST Led off
+		  }
+
+		  signalok = 0;
 	  }
   }
 }

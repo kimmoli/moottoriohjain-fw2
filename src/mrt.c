@@ -34,12 +34,13 @@
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 /**************************************************************************/
+#include <stdio.h>
 #include "LPC8xx.h"
 #include "mrt.h"
 
 volatile uint32_t mrt_counter = 0;
 volatile uint32_t mrtDelay_counter = 0;
-
+int signalok = 0;
 
 void MRT_IRQHandler(void)
 {
@@ -76,13 +77,38 @@ void MRT_IRQHandler(void)
 	}
   }
 
-  if ( LPC_MRT->Channel[3].STAT & MRT_STAT_IRQ_FLAG )
+  if ( LPC_MRT->Channel[2].STAT & MRT_STAT_IRQ_FLAG )
   {
-    LPC_MRT->Channel[3].STAT = MRT_STAT_IRQ_FLAG;      /* clear interrupt flag */
+    LPC_MRT->Channel[2].STAT = MRT_STAT_IRQ_FLAG;      /* clear interrupt flag */
 
     LPC_GPIO_PORT->CLR0 = 0x3C0; // clear all outputs
 
     LPC_MRT->Channel[1].INTVAL = rate | 0x1UL<<31;  // reload the other timer to generate PWM
+  }
+
+  if ( LPC_MRT->Channel[3].STAT & MRT_STAT_IRQ_FLAG )
+  {
+    LPC_MRT->Channel[3].STAT = MRT_STAT_IRQ_FLAG;      /* clear interrupt flag */
+
+	signalok = 1;
+
+    // Replicate GPIO 11 state to GPIO 10
+    if (LPC_GPIO_PORT->PIN0 & (1 << 11))
+    {
+		if ((LPC_GPIO_PORT->PIN0 & (1 << 10)) == 0)
+		{
+			printf("Relay on\r\n");
+		}
+		LPC_GPIO_PORT->SET0 = (1 << 10); // Relay on
+	}
+    else
+    {
+		if ((LPC_GPIO_PORT->PIN0 & (1 << 10)) != 0)
+		{
+			printf("Relay off\r\n");
+		}
+		LPC_GPIO_PORT->CLR0 = (1 << 10); // Relay off
+    }
   }
 
   return;
@@ -101,7 +127,8 @@ void mrtInit(uint32_t delay)
 
   LPC_MRT->Channel[0].CTRL = MRT_REPEATED_MODE|MRT_INT_ENA;
   LPC_MRT->Channel[1].CTRL = MRT_ONE_SHOT_INT|MRT_INT_ENA;
-  LPC_MRT->Channel[3].CTRL = MRT_REPEATED_MODE|MRT_INT_ENA;
+  LPC_MRT->Channel[2].CTRL = MRT_REPEATED_MODE|MRT_INT_ENA;
+  LPC_MRT->Channel[3].CTRL = MRT_ONE_SHOT_INT|MRT_INT_ENA;
 
   /* Enable the MRT Interrupt */
 #if NMI_ENABLED

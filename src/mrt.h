@@ -58,14 +58,23 @@ extern volatile uint32_t mrt_counter;
 
 #define PWM_FREQ 16000
 #define PERIOD_RELOAD (SystemCoreClock/PWM_FREQ)
-#define MIN_RATE (100)
+#define MIN_RATE (15)
 #define MAX_RATE (PERIOD_RELOAD/2)
+
+#define PW_MID 1480
+#define PW_DEAD 80
+#define PW_SPAN 410
+
+#define CW_MIN (PW_MID + PW_DEAD)
+#define CW_MAX (PW_MID + PW_SPAN)
+#define CCW_MIN (PW_MID - PW_DEAD)
+#define CCW_MAX (PW_MID - PW_SPAN)
 
 extern int st1;
 extern int st2;
 extern int drive;
 extern int turn;
-
+extern int signalok;
 extern int rate;
 
 
